@@ -1,0 +1,337 @@
+---
+title: "Replication of Paper: 'Channeling Hearts and Minds: Advocacy Organizations, Cognitive-Emotional Currents, and Public Conversation'"
+author: "Xu Guo"
+date: "May 11, 2022"
+output:
+  html_document:
+    df_print: paged
+  pdf_document:
+    keep_tex: yes
+    fig_caption: yes
+geometry: margin=1in
+fontfamily: mathpazo
+fontsize: 12pt
+urlcolor: black
+header-includes:
+- \pagenumbering{arabic}
+- \usepackage{setspace}\doublespacing
+---
+
+
+```{r setup, include=FALSE}
+# This cell contains default chunk options
+# These will be applied to all chunks unless an individual chunk is modified
+library(knitr)
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(include = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(dev = 'pdf')
+
+# You may modify this chunk to include additional options
+# For example, there are options that can change the layout for all figures
+
+# You can also modify the header options above this chunk to change the
+# formatting of the output, but do so at your own risk.
+
+# This book provides lots of tips for using RMarkdown: https://bookdown.org/yihui/rmarkdown-cookbook/
+```
+
+# INTRODUCTION
+
+The authors argue that advocacy organizations on social media can attract people’s attention and stimulate public conversations by engaging in rational debates (the “cognitive conversational style”) or by appealing to emotions (the “emotional conversational style”). The research questions are, which style is more effective, and does advocacy organizations’ strategy of using the two styles matter in stimulating public conversations?
+
+Drawing on macro-level theories of social contagion and diffusion and micro-level theories of cognition and social psychology, the authors proposed three hypotheses:
+
+Hypothesis 1: Cognitive and emotional conversational styles spread across conversational fields because of social contagion but decline with equal intensity over time because of saturation effects such as cognitive and emotional overload.
+
+Hypothesis 2: The frequency of cognitive and emotional conversational styles are inversely related to each other over time within conversational fields because widespread use of either style facilitates the contagious spread of the other.
+
+Hypothesis 3: Advocacy organizations will stimulate more public conversation if they dispatch messages with emotional language during periods of prolonged rational debate within a given conversational field, or when they dispatch messages with cognitive language when emotional conversations dominate.
+
+As for data and research design, the authors chose Facebook as the main social media site and examined organizations’ posts and user comments on them. The authors used automated text analysis techniques to measure the frequency of cognitive and emotional languages within public conversations about two different social problems over 1.5 years, namely, autism spectrum disorders and human organ donation. 
+
+To evaluate Hypotheses 1 and 2, the authors used time-series models. The results predict an inverse relationship between cognitive and emotional language within public conversations about autism and human organ donation on Facebook over time (“a phase shift” within the conversational field). In other words, an organization’s use of post language may aid the ascendance of one conversational style while the other is in decline. This is what the authors called “the organizational contribution” to a phase shift, which later becomes an important index for testing Hypothesis 3.
+
+My replication focused on Hypothesis 3, which assumes a correlation between advocacy organizations’ ability to draw people into conversations and the characteristics of their posts, audience, social media tactics, positions in external opportunity structures, and themselves. My goal was to replicate the forest plot (Figure 3 in the paper) showing the standardized coefficients from the models for both autism and organ donation organizations.
+
+To test Hypothesis 3, The authors used generalized linear models for panel data with a negative binomial link function. The variables involved in the model are as follows.
+
+The dependent variable is the number of unique social media users who make substantial comments (comments longer than three meaningful words) about an advocacy organization’s posts by day. This measures the extent to which organizations’ Facebook posts draw people into conversation.
+
+There are 21 independent variables in the model, categorized into five divisions: (1) Key indicator, including the phase shift contribution index and the number of posts by the organization in the previous day, (2) characteristics of advocacy organizations, (3) tactics of advocacy organizations, (4) characteristics of advocacy organizations’ audience, and (5) external opportunity structures. (Please refer to the forest plot below for all independent variables in detail.)
+
+
+# REPLICATION
+
+Some problems have prevented me from getting the results in the paper. The first problem lies in the dependent variable. In the dataset that the authors provided on Dataverse, the dependent variable column contains both value ranges and specific numbers. The authors explained in their supplement materials that they had deliberately binned the values to protect anonymity of organizations. To build the models I took the midpoint of each range as the value. Therefore, my replication results differ significantly from the the authors’ in the paper.
+
+Another problem is caused by two independent variables, closeness centrality and betweenness centrality in the division of “characteristics of advocacy organizations”. They are small in numbers - most of them are zeros, and others are very close to zero. After dropping all missing values in the dataset of organ donation organizations, the values of the two variables were all zeros. As a result, the coefficients for these two variables were NA in the summary table of the organ donation model. They disappeared when I used im.beta() to collect standardized regression coefficients for the forest plot. Therefore, I assigned 0 to every value in the two variables in order to draw the plot. This has also made my replication results different from the original.
+
+```{r replication, echo=FALSE}
+library(MASS)
+library(dplyr)
+library(lm.beta)
+library(forestplot)
+library(modelsummary)
+library(rstanarm)
+library(tidyverse)
+library(huxtable)
+
+# Rename the data frame and variables
+load("~/hw2/hw2/SOC542-S22/project/bail_brown_mann.RData")
+data <- bail_brown_mann_data
+
+names(data)[1] <- "usercmt"
+names(data)[2] <- "orgshft"
+names(data)[3] <- "orgpost"
+names(data)[4] <- "fbfans"
+names(data)[7] <- "btwctrl"
+names(data)[8] <- "clctrl"
+names(data)[9] <- "advsl"
+names(data)[10] <- "inftpc"
+names(data)[11] <- "fbads"
+names(data)[22] <- "ttlview"
+names(data)[23] <- "opldsp"
+names(data)[24] <- "homophily"
+names(data)[25] <- "east"
+names(data)[26] <- "midwest"
+names(data)[27] <- "south"
+names(data)[28] <- "west"
+names(data)[29] <- "age35"
+names(data)[30] <- "female"
+names(data)[31] <- "blog"
+names(data)[32] <- "newsatc"
+names(data)[33] <- "googlesearch"
+names(data)[37] <- "budget"
+
+# Create a new DV with the midpoints of the original DV
+data$usercmt1 <- c(0, 3, 7, seq(12, 337, 5))[match(as.integer(data$usercmt), 1:69)]
+
+# Subset two models
+autism <- subset(data, subset = sample == "Autism Organizations")
+organ <- subset(data, subset = sample == "Organ Donation Organizations")
+
+# Model for autism organizations
+model1 <- glm.nb(usercmt1 ~ orgshft + orgpost + fbfans +
+                   btwctrl + clctrl + budget + 
+                   fbads + inftpc + advsl +
+                   ttlview + opldsp + homophily + age35 + female +
+                   east + midwest + south + west +
+                   blog + newsatc + googlesearch,
+                 data = autism, maxit = 1000)
+model2 <- glm.nb(usercmt1 ~ orgshft + orgpost + fbfans +
+                   btwctrl + clctrl + budget + 
+                   fbads + inftpc + advsl +
+                   ttlview + opldsp + homophily + age35 + female +
+                   east + midwest + south + west +
+                   blog + newsatc + googlesearch,
+                 data = organ, maxit = 1000)
+
+modelsummary(list("Autism" = model1, "Organ Donation" = model2), 
+             output = "huxtable", stars = T)
+
+# Plots
+data1 <- lm.beta(model1)
+data2 <- lm.beta(model2)
+data1 <- as.data.frame(summary(data1)$coefficients[,c(2,3,1)])
+data2 <- as.data.frame(summary(data2)$coefficients[,c(2,3,1)])
+
+data2 = rbind(data2[1:4,], list(0., 0., 1.), list(0., 0., 1.), data2[5:dim(data2)[1],])
+rownames(data2)[5] <- 'btwctrl'
+rownames(data2)[6] <- 'clctrl'
+
+data1$sample <- rep("Autism", dim(data1)[1])
+data2$sample <- rep("Organ", dim(data2)[1])
+data1 <- data1[seq(2, dim(data1)[1]),]
+data2 <- data2[seq(2, dim(data2)[1]),]
+
+data3 = rbind(data1, data2)
+
+names(data3)[1] = 'mean'
+names(data3)[2] = 'std'
+names(data3)[3] = 'old_mean'
+data3$mean <- as.double(data3$mean)
+data3$std <- as.double(data3$std)
+data3$old_mean <- as.double(data3$old_mean)
+data3$std <- data3$mean/data3$old_mean * data3$std
+data3$lower <- data3$mean - data3$std
+data3$upper <- data3$mean + data3$std
+
+forestplot(
+  group_by(data3, sample),
+  shapes_gp = fpShapesGp(box = c("blue", "darkred") %>% lapply(function(x) gpar(fill = x, col = "#555555")), default = gpar(vertices = TRUE)),
+  ci.vertices = TRUE,
+  boxsize = .1,
+  labeltext = plottext[seq(1,21),2],
+
+  txt_gp = fpTxtGp(label = gpar(cex=0.4),
+                   ticks = gpar(fontfamily = "", cex = 1),
+                   xlab  = gpar(fontfamily = "", cex = 1.)),
+  )
+
+```
+
+
+# BAYESIAN REPLICATION
+
+I removed the two variables of centrality in Bayesian models due to the reasons mentioned above - the variables became constant variables after I cleaned the data and did not work in Bayesian models. To compare negative binomial and Bayesian models, I estimated the average model prediction errors from the data. I make the codes visible here to clarify the output.
+
+(Note: model1 - Negative binomial model for autism organizations;
+model2 - Negative binomial model for organ donation organizations; 
+model3 - Bayesian model for autism organizations; 
+model4 - Bayesian model for organ donation organizations.)
+
+```{r Bayesian, echo=TRUE}
+# Adjust previous negative binomial models
+model1 <- glm.nb(usercmt1 ~ orgshft + orgpost + fbfans +
+                   budget + 
+                   fbads + inftpc + advsl +
+                   ttlview + opldsp + homophily + age35 + female +
+                   east + midwest + south + west +
+                   blog + newsatc + googlesearch,
+                 data = autism, maxit = 1000)
+
+model2 <- glm.nb(usercmt1 ~ orgshft + orgpost + fbfans +
+                   budget + 
+                   fbads + inftpc + advsl +
+                   ttlview + opldsp + homophily + age35 + female +
+                   east + midwest + south + west +
+                   blog + newsatc + googlesearch,
+                 data = organ, maxit = 1000)
+
+# Bayesian models
+model3 <- stan_glm(usercmt1 ~ orgshft + orgpost + fbfans +
+                   budget +
+                   fbads + inftpc + advsl +
+                   ttlview + opldsp + homophily + age35 + female +
+                   east + midwest + south + west +
+                   blog + newsatc + googlesearch,
+                 data = autism)
+
+model4 <- stan_glm(usercmt1 ~ orgshft + orgpost + fbfans +
+                   budget +
+                   fbads + inftpc + advsl +
+                   ttlview + opldsp + homophily + age35 + female +
+                   east + midwest + south + west +
+                   blog + newsatc + googlesearch,
+                 data = organ)
+
+# Comparison
+data1 <- model1
+target = data$usercmt1[as.integer(names(predict(data1)))]
+print(mean(abs(predict(data1) - target)))
+
+data2 <- model2
+target = data$usercmt1[as.integer(names(predict(data2)))]
+print(mean(abs(predict(data2) - target)))
+
+data3 <- model3
+target = data$usercmt1[as.integer(names(predict(data3)))]
+print(mean(abs(predict(data3) - target)))
+
+data4 <- model4
+target = data$usercmt1[as.integer(names(predict(data4)))]
+print(mean(abs(predict(data4) - target)))
+
+```
+For both fields of organizations, Bayesian models have smaller average error statistics (0.43 for autism organizations and 1.51 for organ donation organizations, respectively) than negative binomial models (2.50 for autism organizations and 2.21 for organ donation organizations). Therefore, for the dataset with "betweenness centrality" and "closeness centrality" variables removed, Bayesian models seem to make better predictions than negative binomial models. (However, I am not sure if this conclusion holds true for the original dataset that the authors have - probably not.)
+
+# ALTERNATIVE SPECIFICATIONS
+
+```{r Alternative, echo=FALSE}
+# Changing data: multiply the DV by 10
+autism$usercmtal <- autism$usercmt1 * 10
+organ$usercmtal <- organ$usercmt1 * 10
+
+model1 <- glm.nb(usercmt1 ~ orgshft + orgpost + fbfans +
+                   btwctrl + clctrl + budget + 
+                   fbads + inftpc + advsl +
+                   ttlview + opldsp + homophily + age35 + female +
+                   east + midwest + south + west +
+                   blog + newsatc + googlesearch,
+                 data = autism, maxit = 1000)
+model2 <- glm.nb(usercmt1 ~ orgshft + orgpost + fbfans +
+                   btwctrl + clctrl + budget + 
+                   fbads + inftpc + advsl +
+                   ttlview + opldsp + homophily + age35 + female +
+                   east + midwest + south + west +
+                   blog + newsatc + googlesearch,
+                 data = organ, maxit = 1000)
+
+almodel1 <- glm.nb(usercmtal ~ orgshft + orgpost + fbfans +
+                   btwctrl + clctrl + budget + 
+                   fbads + inftpc + advsl +
+                   ttlview + opldsp + homophily + age35 + female +
+                   east + midwest + south + west +
+                   blog + newsatc + googlesearch,
+                 data = autism)
+almodel2 <- glm.nb(usercmtal ~ orgshft + orgpost + fbfans +
+                   btwctrl + clctrl + budget + 
+                   fbads + inftpc + advsl +
+                   ttlview + opldsp + homophily + age35 + female +
+                   east + midwest + south + west +
+                   blog + newsatc + googlesearch,
+                 data = organ)
+
+modelsummary(list("Autism" = model1, "Autism Alternative" = almodel1, 
+                  "Organ Donation" = model2, "Organ Donation Alternative" = almodel2), 
+             output = "huxtable", stars = T, 
+             notes = "Multiply the DV by 10")
+
+# Changing variables: Only "Key Indicators"
+almodel3 <- glm.nb(usercmt1 ~ orgshft + orgpost + fbfans,
+                 data = autism)
+almodel4 <- glm.nb(usercmt1 ~ orgshft + orgpost + fbfans,
+                 data = organ)
+
+modelsummary(list("Autism" = almodel3, "Organ Donation" = almodel4), 
+             output = "huxtable", stars = T,
+             note = "'Key Indicators' only")
+
+# Changing models: Poisson models
+almodel5 <- glm(usercmt1 ~ orgshft + orgpost + fbfans +
+                   btwctrl + clctrl + budget + 
+                   fbads + inftpc + advsl +
+                   ttlview + opldsp + homophily + age35 + female +
+                   east + midwest + south + west +
+                   blog + newsatc + googlesearch,
+         data = autism, family = poisson(link = "log"))
+almodel6 <- glm(usercmt1 ~ orgshft + orgpost + fbfans +
+                   btwctrl + clctrl + budget + 
+                   fbads + inftpc + advsl +
+                   ttlview + opldsp + homophily + age35 + female +
+                   east + midwest + south + west +
+                   blog + newsatc + googlesearch,
+         data = organ, family = poisson(link = "log"))
+
+modelsummary(list("Autism" = model1, "Autism Poisson" = almodel5, "Organ Donation" = model2, "Organ Donation Poisson" = almodel6), 
+             output = "huxtable", stars = T,
+             note = "Poisson models")
+
+target = data$usercmt1[as.integer(names(predict(model1)))]
+print(mean(abs(predict(model1) - target)))
+
+target = data$usercmt1[as.integer(names(predict(almodel5)))]
+print(mean(abs(predict(almodel5) - target)))
+
+target = data$usercmt1[as.integer(names(predict(model2)))]
+print(mean(abs(predict(model2) - target)))
+
+target = data$usercmt1[as.integer(names(predict(almodel6)))]
+print(mean(abs(predict(almodel6) - target)))
+
+```
+
+I give three alternative specifications here: (1) Multiplying the values of the dependent variable by 10, (2) removing all variables except the ones listed as "Key Indicators," and (3) changing Negative Binomial models to Poisson ones.
+
+The first table shows that the variation in the values of the DV affects the coefficients of each variable in the model. The level of significance changes for several variable coefficients, such as the yearly budget and the number of Facebook fans of organizations. I am particularly interested in the "newsatc" variable (the number of external news articles that mentioned the organization on the previous day) in the autism model as its coefficient turns negative at the significance level of p < 0.01. In the alternative autism model, a one unit change in newsatc results in a 0.308 unit decrease in the logs of expected counts of the DV.
+
+The second table shows that after removing other variables, the coefficients of the key indicators (the phase shift contribution index, the number of organization posts on the previous day, the number of organization Facebook fans) are still all significant at the level of p < 0.001. In addition, they have larger values in the alternative model than in the original one.
+
+The third table shows that compared to original negative binomial models, more variable coefficients in Poisson models are statistically significant. Then, I compared average error statistics between the two models. For both fields of organizations, Poisson models have smaller average error statistics (1.98 for autism organizations and 2.13 for organ donation organizations, respectively) than negative binomial models (2.50 for autism organizations and 2.21 for organ donation organizations). Therefore, Poisson models seem to make better predictions than negative binomial models.
+
+In the paper, I tried to replicate the forest plot in the original paper and identified several dataset factors that prevented me from getting the same results. I have also compared negative binomial, Bayesian, and Poisson models and estimated their average prediction errors from the data.
+
+# REFERENCES
+Bail, C. A., Brown, T. W., & Mann, M. (2017). Channeling hearts and minds: Advocacy organizations, cognitive-emotional currents, and public conversation. American Sociological Review, 82(6), 1188-1213.
